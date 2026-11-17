@@ -33,6 +33,8 @@ DELIVERY_REPOS=(
   "aroma-pacifico-infrastructure"
   "aroma-pacifico-design-system"
   "aroma-pacifico-presentation"
+  "aroma-pacifico-roadmap"
+  "aroma-pacifico-web"
 )
 
 DISTRIBUTED_FILES=(
@@ -42,8 +44,22 @@ DISTRIBUTED_FILES=(
   ".claude/settings.json"
   "CONTRIBUTING.md"
   ".gitmessage"
+  ".githooks/commit-msg"
   ".github/pull_request_template.md"
   ".github/workflows/pr-conventions.yml"
+)
+
+GIT_GOVERNANCE_FILES=(
+  "AGENTS.md"
+  "GEMINI.md"
+  ".claude/settings.json"
+  "CONTRIBUTING.md"
+  ".gitmessage"
+  ".githooks/commit-msg"
+  ".github/pull_request_template.md"
+  ".github/workflows/pr-conventions.yml"
+  "standards/git-workflow.md"
+  "standards/no-ai-coauthorship.md"
 )
 
 DISTRIBUTED_DIRS=(
@@ -85,10 +101,38 @@ resolve_repo_path() {
 
 is_public_repo() {
   local repo_name="$1"
-  if [ "$repo_name" = "aroma-pacifico-terraform-modules" ] || [ "$repo_name" = "terraform-modules" ]; then
-    return 0
-  fi
-  return 1
+  case "$repo_name" in
+    aroma-pacifico-terraform-modules|terraform-modules|aroma-pacifico-web|web)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_git_governance_only_repo() {
+  local repo_name="$1"
+  case "$repo_name" in
+    aroma-pacifico-roadmap|roadmap|aroma-pacifico-web|web)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+has_custom_claude_md() {
+  local repo_name="$1"
+  case "$repo_name" in
+    aroma-pacifico-web|web)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 apply_repo() {
@@ -100,57 +144,75 @@ apply_repo() {
 
   echo "Applying canonical rule set to: ${repo_name} (${target_path})"
 
-  # Ensure destination directories exist
   mkdir -p "${target_path}/.claude"
+  mkdir -p "${target_path}/.githooks"
   mkdir -p "${target_path}/.github/workflows"
   mkdir -p "${target_path}/standards"
-  mkdir -p "${target_path}/.agents/skills"
 
-  # Copy single files
-  for f in "${DISTRIBUTED_FILES[@]}"; do
-    local src_file="${CANONICAL_ROOT}/${f}"
-    local dst_file="${target_path}/${f}"
-    if [ ! -f "$src_file" ]; then
-      echo "ERROR: Source file missing: ${src_file}" >&2
-      exit 1
-    fi
-    mkdir -p "$(dirname "$dst_file")"
-    cp -p "$src_file" "$dst_file"
-  done
-
-  # Copy directory trees
-  for d in "${DISTRIBUTED_DIRS[@]}"; do
-    local src_dir="${CANONICAL_ROOT}/${d}"
-    local dst_dir="${target_path}/${d}"
-    if [ ! -d "$src_dir" ]; then
-      echo "ERROR: Source directory missing: ${src_dir}" >&2
-      exit 1
-    fi
-    rm -rf "$dst_dir"
-    mkdir -p "$(dirname "$dst_dir")"
-    cp -rp "$src_dir" "$dst_dir"
-  done
-
-  # Handle case statement: only for private delivery repositories
-  local case_pdf_src="${CANONICAL_ROOT}/docs/case/case-statement.pdf"
-  local case_pdf_dst="${target_path}/docs/case/case-statement.pdf"
-
-  if is_public_repo "$repo_name"; then
-    if [ -f "$case_pdf_dst" ]; then
-      echo "Removing forbidden case-statement.pdf from public repository: ${repo_name}"
-      rm -f "$case_pdf_dst"
-      rmdir "${target_path}/docs/case" 2>/dev/null || true
-      rmdir "${target_path}/docs" 2>/dev/null || true
+  if is_git_governance_only_repo "$repo_name"; then
+    for f in "${GIT_GOVERNANCE_FILES[@]}"; do
+      local src_file="${CANONICAL_ROOT}/${f}"
+      local dst_file="${target_path}/${f}"
+      if [ ! -f "$src_file" ]; then
+        echo "ERROR: Source file missing: ${src_file}" >&2
+        exit 1
+      fi
+      mkdir -p "$(dirname "$dst_file")"
+      cp -p "$src_file" "$dst_file"
+    done
+    if ! has_custom_claude_md "$repo_name"; then
+      cp -p "${CANONICAL_ROOT}/CLAUDE.md" "${target_path}/CLAUDE.md"
     fi
   else
-    if [ -f "$case_pdf_src" ]; then
-      mkdir -p "${target_path}/docs/case"
-      cp -p "$case_pdf_src" "$case_pdf_dst"
+    mkdir -p "${target_path}/.agents/skills"
+
+    # Copy single files
+    for f in "${DISTRIBUTED_FILES[@]}"; do
+      local src_file="${CANONICAL_ROOT}/${f}"
+      local dst_file="${target_path}/${f}"
+      if [ ! -f "$src_file" ]; then
+        echo "ERROR: Source file missing: ${src_file}" >&2
+        exit 1
+      fi
+      mkdir -p "$(dirname "$dst_file")"
+      cp -p "$src_file" "$dst_file"
+    done
+
+    # Copy directory trees
+    for d in "${DISTRIBUTED_DIRS[@]}"; do
+      local src_dir="${CANONICAL_ROOT}/${d}"
+      local dst_dir="${target_path}/${d}"
+      if [ ! -d "$src_dir" ]; then
+        echo "ERROR: Source directory missing: ${src_dir}" >&2
+        exit 1
+      fi
+      rm -rf "$dst_dir"
+      mkdir -p "$(dirname "$dst_dir")"
+      cp -rp "$src_dir" "$dst_dir"
+    done
+
+    # Handle case statement: only for private full delivery repositories
+    local case_pdf_src="${CANONICAL_ROOT}/docs/case/case-statement.pdf"
+    local case_pdf_dst="${target_path}/docs/case/case-statement.pdf"
+
+    if is_public_repo "$repo_name"; then
+      if [ -f "$case_pdf_dst" ]; then
+        echo "Removing forbidden case-statement.pdf from public repository: ${repo_name}"
+        rm -f "$case_pdf_dst"
+        rmdir "${target_path}/docs/case" 2>/dev/null || true
+        rmdir "${target_path}/docs" 2>/dev/null || true
+      fi
     else
-      echo "WARNING: Canonical case statement not found at: ${case_pdf_src}" >&2
+      if [ -f "$case_pdf_src" ]; then
+        mkdir -p "${target_path}/docs/case"
+        cp -p "$case_pdf_src" "$case_pdf_dst"
+      else
+        echo "WARNING: Canonical case statement not found at: ${case_pdf_src}" >&2
+      fi
     fi
   fi
 
+  chmod +x "${target_path}/.githooks/commit-msg"
   echo "SUCCESS: Applied canonical rule set to ${repo_name}"
 }
 
@@ -162,50 +224,80 @@ check_repo() {
 
   echo "Checking repository: ${repo_name}"
 
-  # Check single files
-  for f in "${DISTRIBUTED_FILES[@]}"; do
-    local src_file="${CANONICAL_ROOT}/${f}"
-    local dst_file="${target_path}/${f}"
-    if [ ! -f "$dst_file" ]; then
-      echo "  DRIFT: Missing file: ${f}"
-      drift_count=$((drift_count + 1))
-    elif ! cmp -s "$src_file" "$dst_file"; then
-      echo "  DRIFT: File content mismatch: ${f}"
-      drift_count=$((drift_count + 1))
-    fi
-  done
-
-  # Check directory trees
-  for d in "${DISTRIBUTED_DIRS[@]}"; do
-    local src_dir="${CANONICAL_ROOT}/${d}"
-    local dst_dir="${target_path}/${d}"
-    if [ ! -d "$dst_dir" ]; then
-      echo "  DRIFT: Missing directory: ${d}"
-      drift_count=$((drift_count + 1))
-    elif ! diff -rq "$src_dir" "$dst_dir" >/dev/null 2>&1; then
-      echo "  DRIFT: Directory mismatch: ${d}"
-      diff -rq "$src_dir" "$dst_dir" | sed 's/^/    /'
-      drift_count=$((drift_count + 1))
-    fi
-  done
-
-  # Check case statement rule
-  local case_pdf_dst="${target_path}/docs/case/case-statement.pdf"
-  local case_pdf_src="${CANONICAL_ROOT}/docs/case/case-statement.pdf"
-
-  if is_public_repo "$repo_name"; then
-    if [ -f "$case_pdf_dst" ]; then
-      echo "  DRIFT: Forbidden case-statement.pdf present in public repository ${repo_name}"
-      drift_count=$((drift_count + 1))
+  if is_git_governance_only_repo "$repo_name"; then
+    for f in "${GIT_GOVERNANCE_FILES[@]}"; do
+      local src_file="${CANONICAL_ROOT}/${f}"
+      local dst_file="${target_path}/${f}"
+      if [ ! -f "$dst_file" ]; then
+        echo "  DRIFT: Missing file: ${f}"
+        drift_count=$((drift_count + 1))
+      elif ! cmp -s "$src_file" "$dst_file"; then
+        echo "  DRIFT: File content mismatch: ${f}"
+        drift_count=$((drift_count + 1))
+      fi
+    done
+    if ! has_custom_claude_md "$repo_name"; then
+      if [ ! -f "${target_path}/CLAUDE.md" ] || ! cmp -s "${CANONICAL_ROOT}/CLAUDE.md" "${target_path}/CLAUDE.md"; then
+        echo "  DRIFT: File content mismatch: CLAUDE.md"
+        drift_count=$((drift_count + 1))
+      fi
+    else
+      if [ ! -f "${target_path}/CLAUDE.md" ] || ! head -n 1 "${target_path}/CLAUDE.md" | grep -qx '@AGENTS.md'; then
+        echo "  DRIFT: Custom CLAUDE.md missing @AGENTS.md import"
+        drift_count=$((drift_count + 1))
+      fi
     fi
   else
-    if [ ! -f "$case_pdf_dst" ]; then
-      echo "  DRIFT: Missing docs/case/case-statement.pdf in private repository ${repo_name}"
-      drift_count=$((drift_count + 1))
-    elif ! cmp -s "$case_pdf_src" "$case_pdf_dst"; then
-      echo "  DRIFT: Content mismatch in docs/case/case-statement.pdf"
-      drift_count=$((drift_count + 1))
+    # Check single files
+    for f in "${DISTRIBUTED_FILES[@]}"; do
+      local src_file="${CANONICAL_ROOT}/${f}"
+      local dst_file="${target_path}/${f}"
+      if [ ! -f "$dst_file" ]; then
+        echo "  DRIFT: Missing file: ${f}"
+        drift_count=$((drift_count + 1))
+      elif ! cmp -s "$src_file" "$dst_file"; then
+        echo "  DRIFT: File content mismatch: ${f}"
+        drift_count=$((drift_count + 1))
+      fi
+    done
+
+    # Check directory trees
+    for d in "${DISTRIBUTED_DIRS[@]}"; do
+      local src_dir="${CANONICAL_ROOT}/${d}"
+      local dst_dir="${target_path}/${d}"
+      if [ ! -d "$dst_dir" ]; then
+        echo "  DRIFT: Missing directory: ${d}"
+        drift_count=$((drift_count + 1))
+      elif ! diff -rq "$src_dir" "$dst_dir" >/dev/null 2>&1; then
+        echo "  DRIFT: Directory mismatch: ${d}"
+        diff -rq "$src_dir" "$dst_dir" | sed 's/^/    /'
+        drift_count=$((drift_count + 1))
+      fi
+    done
+
+    # Check case statement rule
+    local case_pdf_dst="${target_path}/docs/case/case-statement.pdf"
+    local case_pdf_src="${CANONICAL_ROOT}/docs/case/case-statement.pdf"
+
+    if is_public_repo "$repo_name"; then
+      if [ -f "$case_pdf_dst" ]; then
+        echo "  DRIFT: Forbidden case-statement.pdf present in public repository ${repo_name}"
+        drift_count=$((drift_count + 1))
+      fi
+    else
+      if [ ! -f "$case_pdf_dst" ]; then
+        echo "  DRIFT: Missing docs/case/case-statement.pdf in private repository ${repo_name}"
+        drift_count=$((drift_count + 1))
+      elif ! cmp -s "$case_pdf_src" "$case_pdf_dst"; then
+        echo "  DRIFT: Content mismatch in docs/case/case-statement.pdf"
+        drift_count=$((drift_count + 1))
+      fi
     fi
+  fi
+
+  if [ ! -x "${target_path}/.githooks/commit-msg" ]; then
+    echo "  DRIFT: .githooks/commit-msg is missing or not executable"
+    drift_count=$((drift_count + 1))
   fi
 
   if [ "$drift_count" -eq 0 ]; then
