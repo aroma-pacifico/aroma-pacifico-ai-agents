@@ -3,9 +3,9 @@
 # scripts/sync-rules.sh
 # Canonical rule synchronization and drift checking for Aroma Pacífico
 #
-# Because the canonical repository (aroma-pacifico-ai-agents) is private and
-# requires no external cross-repository token secrets, automated cross-repository
-# CI synchronization is intentionally disabled.
+# All organization repositories are public, and to avoid requiring external
+# cross-repository token secrets, automated cross-repository CI synchronization
+# is intentionally disabled.
 #
 # Drift checking and synchronization are executed locally by the lead agent or
 # developer using this script and the local gh CLI credentials.
@@ -99,7 +99,7 @@ resolve_repo_path() {
   return 1
 }
 
-is_public_repo() {
+is_case_statement_excluded() {
   local repo_name="$1"
   case "$repo_name" in
     aroma-pacifico-terraform-modules|terraform-modules|aroma-pacifico-web|web)
@@ -191,13 +191,13 @@ apply_repo() {
       cp -rp "$src_dir" "$dst_dir"
     done
 
-    # Handle case statement: only for private full delivery repositories
+    # Handle case statement: only for full delivery repositories
     local case_pdf_src="${CANONICAL_ROOT}/docs/case/case-statement.pdf"
     local case_pdf_dst="${target_path}/docs/case/case-statement.pdf"
 
-    if is_public_repo "$repo_name"; then
+    if is_case_statement_excluded "$repo_name"; then
       if [ -f "$case_pdf_dst" ]; then
-        echo "Removing forbidden case-statement.pdf from public repository: ${repo_name}"
+        echo "Removing excluded case-statement.pdf from repository: ${repo_name}"
         rm -f "$case_pdf_dst"
         rmdir "${target_path}/docs/case" 2>/dev/null || true
         rmdir "${target_path}/docs" 2>/dev/null || true
@@ -279,14 +279,14 @@ check_repo() {
     local case_pdf_dst="${target_path}/docs/case/case-statement.pdf"
     local case_pdf_src="${CANONICAL_ROOT}/docs/case/case-statement.pdf"
 
-    if is_public_repo "$repo_name"; then
+    if is_case_statement_excluded "$repo_name"; then
       if [ -f "$case_pdf_dst" ]; then
-        echo "  DRIFT: Forbidden case-statement.pdf present in public repository ${repo_name}"
+        echo "  DRIFT: Forbidden case-statement.pdf present in repository ${repo_name}"
         drift_count=$((drift_count + 1))
       fi
     else
       if [ ! -f "$case_pdf_dst" ]; then
-        echo "  DRIFT: Missing docs/case/case-statement.pdf in private repository ${repo_name}"
+        echo "  DRIFT: Missing docs/case/case-statement.pdf in delivery repository ${repo_name}"
         drift_count=$((drift_count + 1))
       elif ! cmp -s "$case_pdf_src" "$case_pdf_dst"; then
         echo "  DRIFT: Content mismatch in docs/case/case-statement.pdf"
